@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>אפליקציית קליעות כדורסל</title>
+    <style>
+        :root {
+            --primary: #E65100;
+            --primary-light: #FFB74D;
+            --bg: #F5F7FA;
+            --card-bg: #FFFFFF;
+            --text: #263238;
+            --border: #CFD8DC;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 15px;
+            padding-bottom: 40px;
+        }
+        .header {
+            background: linear-gradient(135deg, var(--primary), #FF6D00);
+            color: white;
+            padding: 15px;
+            text-align: center;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+        .config-card, .history-card {
+            background: var(--card-bg);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            border: 1px solid var(--border);
+        }
+        .config-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        select, input[type="date"] {
+            font-size: 1rem;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: white;
+        }
+        .station-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+        }
+        .station-title {
+            font-size: 1rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .counter-input {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .counter-input input {
+            width: 60px;
+            text-align: center;
+            font-size: 1.1rem;
+            padding: 6px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+        .btn-action {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .history-item {
+            border-bottom: 1px solid var(--border);
+            padding: 10px 0;
+            font-size: 0.9rem;
+        }
+        .history-item:last-child { border: none; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1 style="margin:0; font-size:1.4rem;">🏀 אפליקציית מעקב קליעות</h1>
+    </div>
+
+    <!-- הגדרת אימון -->
+    <div class="config-card">
+        <div class="config-row" style="margin-bottom: 10px;">
+            <label>📅 <strong>תאריך אימון:</strong></label>
+            <input type="date" id="workout-date">
+        </div>
+        <div class="config-row">
+            <label>🎯 <strong>כמות זריקות לתחנה:</strong></label>
+            <select id="total-shots" onchange="updateMaxShots()"></select>
+        </div>
+    </div>
+
+    <!-- תחנות קליעה -->
+    <div id="stations-container"></div>
+
+    <button class="btn-action" onclick="saveWorkout()">שמור אימון ביומן 💾</button>
+
+    <!-- היסטוריית אימונים -->
+    <div class="history-card" style="margin-top: 20px;">
+        <h3 style="margin-top:0;">📅 היסטוריית אימונים ושמירות</h3>
+        <div id="history-container">אין עדיין אימונים שמורים במערכת.</div>
+        <button class="btn-action" style="background:#718096; font-size:0.9rem; padding:6px; margin-top:15px;" onclick="clearHistory()">מחיקת כל ההיסטוריה 🗑️</button>
+    </div>
+
+    <script>
+        const stations = [
+            "קליעות עונשין", "חצי פינה עונשין ימין", "חצי פינה עונשין שמאל",
+            "שלשה: פינה ימין (0°)", "שלשה: 45° ימין", "שלשה: מרכז (טופ)",
+            "שלשה: 45° שמאל", "שלשה: פינה שמאל (0°)"
+        ];
+
+        // אתחול כמות זריקות (5 עד 50)
+        const select = document.getElementById('total-shots');
+        for(let i=5; i<=50; i++) {
+            let opt = document.createElement('option');
+            opt.value = i; opt.innerText = `${i} זריקות`;
+            if(i === 20) opt.selected = true; // ברירת מחדל 20
+            select.appendChild(opt);
+        }
+
+        // הגדרת תאריך של היום כברירת מחדל
+        document.getElementById('workout-date').valueAsDate = new Date();
+
+        // בניית התחנות במסך
+        const container = document.getElementById('stations-container');
+        stations.forEach((name, idx) => {
+            const card = document.createElement('div');
+            card.className = 'station-card';
+            card.innerHTML = `
+                <div class="station-title">
+                    <span>${name}</span>
+                    <div class="counter-input">
+                        <input type="number" id="made-${idx}" min="0" value="0" onchange="validateInput(this)">
+                        <span id="max-label-${idx}">/ 20</span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+
+        function updateMaxShots() {
+            const max = document.getElementById('total-shots').value;
+            stations.forEach((_, idx) => {
+                document.getElementById(`max-label-${idx}`).innerText = `/ ${max}`;
+                const input = document.getElementById(`made-${idx}`);
+                input.max = max;
+                if(parseInt(input.value) > max) input.value = max;
+            });
+        }
+        updateMaxShots();
+
+        function validateInput(input) {
+            const max = parseInt(document.getElementById('total-shots').value);
+            if(parseInt(input.value) > max) input.value = max;
+            if(parseInt(input.value) < 0 || input.value === '') input.value = 0;
+        }
+
+        // שמירה ל-LocalStorage של הדפדפן
+        function saveWorkout() {
+            const date = document.getElementById('workout-date').value;
+            const total = document.getElementById('total-shots').value;
+            
+            let workoutData = { date: date, totalShots: total, results: {} };
+            stations.forEach((name, idx) => {
+                workoutData.results[name] = document.getElementById(`made-${idx}`).value;
+            });
+
+            let history = JSON.parse(localStorage.getItem('bball_history')) || [];
+            history.unshift(workoutData); // הוספה להתחלה
+            localStorage.setItem('bball_history', JSON.stringify(history));
+            
+            alert('האימון נשמר בהצלחה בהיסטוריה!');
+            loadHistory();
+            
+            // איפוס מונים זמני
+            stations.forEach((_, idx) => document.getElementById(`made-${idx}`).value = 0);
+        }
+
+        // טעינת ההיסטוריה מהזיכרון
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('bball_history')) || [];
+            const histContainer = document.getElementById('history-container');
+            if(history.length === 0) {
+                histContainer.innerHTML = "אין עדיין אימונים שמורים במערכת.";
+                return;
+            }
+            
+            histContainer.innerHTML = '';
+            history.forEach(workout => {
+                let item = document.createElement('div');
+                item.className = 'history-item';
+                let formattedDate = new Date(workout.date).toLocaleDateString('he-IL');
+                
+                let details = `<strong>📅 אימון מיום ${formattedDate} (מתוך ${workout.totalShots} זריקות):</strong><br>`;
+                for(let station in workout.results) {
+                    let made = workout.results[station];
+                    let pct = Math.round((made / workout.totalShots) * 100);
+                    details += `• ${station}: ${made}/${workout.totalShots} (${pct}%)<br>`;
+                }
+                item.innerHTML = details;
+                histContainer.appendChild(item);
+            });
+        }
+
+        function clearHistory() {
+            if(confirm("האם למחוק את כל היסטוריית האימונים לצמיתות?")) {
+                localStorage.removeItem('bball_history');
+                loadHistory();
+            }
+        }
+
+        // טעינה ראשונית של היסטוריה אם קיימת
+        loadHistory();
+    </script>
+</body>
+</html>
