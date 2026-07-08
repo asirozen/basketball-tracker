@@ -116,7 +116,16 @@
             font-size: 0.9rem;
         }
         .history-item:last-child { border: none; }
+        .loading {
+            text-align: center;
+            color: #718096;
+            font-style: italic;
+            padding: 10px;
+        }
     </style>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -124,7 +133,6 @@
         <h1 style="margin:0; font-size:1.4rem;">🏀 אפליקציית מעקב קליעות</h1>
     </div>
 
-    <!-- הגדרת אימון כללית -->
     <div class="config-card">
         <div class="config-row">
             <label>👤 <strong>שם המתאמן:</strong></label>
@@ -140,34 +148,38 @@
         </div>
     </div>
 
-    <!-- תחנות קליעה -->
     <div id="stations-container"></div>
 
-    <button class="btn-action" onclick="saveWorkout()">שמור אימון ביומן 💾</button>
+    <button class="btn-action" onclick="saveWorkout()">שמור אימון בענן 💾</button>
 
-    <!-- היסטוריית אימונים -->
     <div class="history-card" style="margin-top: 20px;">
-        <h3 style="margin-top:0;">📅 היסטוריית אימונים ושמירות</h3>
-        <div id="history-container">אין עדיין אימונים שמורים במערכת.</div>
+        <h3 style="margin-top:0;">📅 היסטוריית אימונים בענן (מסונכרן)</h3>
+        <div id="history-container" class="loading">טוען נתונים מהענן...</div>
         <button class="btn-action" style="background:#718096; font-size:0.9rem; padding:6px; margin-top:15px;" onclick="clearHistory()">מחיקת כל ההיסטוריה 🗑️</button>
     </div>
 
     <script>
-        // רשימת התחנות המעודכנת (13 תחנות בסך הכל)
+        // המפתחות המלאים ששלחת מהאתר
+        const firebaseConfig = {
+            apiKey: "AIzaSyAVkN0ahWuBhQsJZcyp5xKoJ3m1qkPEJ2M",
+            authDomain: "basketball-tracker-7380a.firebaseapp.com",
+            databaseURL: "https://basketball-tracker-7380a-default-rtdb.firebaseio.com",
+            projectId: "basketball-tracker-7380a",
+            storageBucket: "basketball-tracker-7380a.firebasestorage.app",
+            messagingSenderId: "923195304585",
+            appId: "1:923195304585:web:2fa41f6092a4b53787f458"
+        };
+
+        // אתחול המערכת
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
         const stations = [
-            "קליעות עונשין", 
-            "חצי פינה עונשין ימין", 
-            "חצי פינה עונשין שמאל",
-            "צעד וחצי ימין",
-            "צעד וחצי שמאל",
-            "JUMP SHOT עונשין",
-            "JUMP SHOT פינה ימין עונשין",
-            "JUMP SHOT פינה שמאל עונשין",
-            "שלשה: פינה ימין (0°)", 
-            "שלשה: 45° ימין", 
-            "שלשה: מרכז (טופ)",
-            "שלשה: 45° שמאל", 
-            "שלשה: פינה שמאל (0°)"
+            "קליעות עונשין", "חצי פינה עונשין ימין", "חצי פינה עונשין שמאל",
+            "צעד וחצי ימין", "צעד וחצי שמאל", "JUMP SHOT עונשין",
+            "JUMP SHOT פינה ימין עונשין", "JUMP SHOT פינה שמאל עונשין",
+            "שלשה: פינה ימין (0°)", "שלשה: 45° ימין", "שלשה: מרכז (טופ)",
+            "שלשה: 45° שמאל", "שלשה: פינה שמאל (0°)"
         ];
 
         // מילוי סלקטור זריקות גלובלי (5 עד 50)
@@ -188,7 +200,6 @@
             const card = document.createElement('div');
             card.className = 'station-card';
             
-            // יצירת סלקטור ייעודי לתחנה הספציפית
             let stationOptions = '';
             for(let i=5; i<=50; i++) {
                 stationOptions += `<option value="${i}" ${i === 20 ? 'selected' : ''}>${i} זריקות</option>`;
@@ -214,96 +225,90 @@
             container.appendChild(card);
         });
 
-        // עדכון כל התחנות בבת אחת מהמפתח הראשי
         function updateAllStationsMax() {
             const globalMax = document.getElementById('global-shots').value;
             stations.forEach((_, idx) => {
-                const stationSelect = document.getElementById(`total-${idx}`);
-                stationSelect.value = globalMax;
+                document.getElementById(`total-${idx}`).value = globalMax;
                 validateInput(idx);
             });
         }
 
-        // בדיקת תקינות קלט לכל תחנה בנפרד
         function validateInput(idx) {
             const input = document.getElementById(`made-${idx}`);
             const max = parseInt(document.getElementById(`total-${idx}`).value);
-            
             if (input.value !== '') {
                 if (parseInt(input.value) > max) input.value = max;
                 if (parseInt(input.value) < 0) input.value = 0;
             }
         }
 
-        // שמירה ל-LocalStorage של הדפדפן
+        // שמירה לענן
         function saveWorkout() {
             const playerName = document.getElementById('player-name').value.trim() || "שחקן כללי";
             const date = document.getElementById('workout-date').value;
             
-            let workoutData = { name: playerName, date: date, results: [] };
-            
+            let resultsArray = [];
             stations.forEach((name, idx) => {
                 const madeVal = document.getElementById(`made-${idx}`).value;
                 const totalVal = document.getElementById(`total-${idx}`).value;
-                
-                // אם המשתמש לא הזין כלום, נתייחס לזה כ-0 קליעות
-                const made = madeVal === '' ? 0 : parseInt(madeVal);
-                
-                workoutData.results.push({
+                resultsArray.push({
                     stationName: name,
-                    made: made,
+                    made: madeVal === '' ? 0 : parseInt(madeVal),
                     total: parseInt(totalVal)
                 });
             });
 
-            let history = JSON.parse(localStorage.getItem('bball_history')) || [];
-            history.unshift(workoutData); 
-            localStorage.setItem('bball_history', JSON.stringify(history));
-            
-            alert('האימון נשמר בהצלחה בהיסטוריה!');
-            loadHistory();
-            
-            // ניקוי שדות הזנה לפעם הבאה (משאיר ריק, בלי אפסים)
-            stations.forEach((_, idx) => document.getElementById(`made-${idx}`).value = '');
+            database.ref('workouts').push({
+                name: playerName,
+                date: date,
+                results: resultsArray,
+                timestamp: firebase.database.ServerValue.TIMESTAMP
+            }, function(error) {
+                if (error) {
+                    alert('שגיאה בשמירה: ' + error.message);
+                } else {
+                    alert('האימון נשמר והסתנכרן בענן בהצלחה!');
+                    stations.forEach((_, idx) => document.getElementById(`made-${idx}`).value = '');
+                }
+            });
         }
 
-        // טעינת ההיסטוריה מהזיכרון
-        function loadHistory() {
-            const history = JSON.parse(localStorage.getItem('bball_history')) || [];
+        // טעינה ועדכון אוטומטי מהענן בריל-טיים
+        database.ref('workouts').orderByChild('timestamp').on('value', function(snapshot) {
             const histContainer = document.getElementById('history-container');
-            if(history.length === 0) {
-                histContainer.innerHTML = "אין עדיין אימונים שמורים במערכת.";
-                return;
-            }
-            
             histContainer.innerHTML = '';
-            history.forEach(workout => {
-                let item = document.createElement('div');
-                item.className = 'history-item';
+            
+            let historyHTML = [];
+            snapshot.forEach(function(childSnapshot) {
+                const workout = childSnapshot.val();
                 let formattedDate = new Date(workout.date).toLocaleDateString('he-IL');
                 let nameToShow = workout.name || "שחקן כללי";
                 
-                let details = `<strong>👤 מתאמן: ${nameToShow} | 📅 יום ${formattedDate}:</strong><br>`;
+                let details = `<div class="history-item"><strong>👤 מתאמן: ${nameToShow} | 📅 יום ${formattedDate}:</strong><br>`;
                 
                 workout.results.forEach(res => {
                     let pct = res.total > 0 ? Math.round((res.made / res.total) * 100) : 0;
                     details += `• ${res.stationName}: ${res.made}/${res.total} (${pct}%)<br>`;
                 });
                 
-                item.innerHTML = details;
-                histContainer.appendChild(item);
+                details += `</div>`;
+                historyHTML.unshift(details); // החדש ביותר למעלה
             });
-        }
+
+            if(historyHTML.length === 0) {
+                histContainer.innerHTML = "אין עדיין אימונים שמורים במערכת.";
+            } else {
+                histContainer.innerHTML = historyHTML.join('');
+            }
+        }, function(error) {
+            document.getElementById('history-container').innerHTML = "שגיאה בטעינת נתונים: " + error.message;
+        });
 
         function clearHistory() {
-            if(confirm("האם למחוק את כל היסטוריית האימונים לצמיתות?")) {
-                localStorage.removeItem('bball_history');
-                loadHistory();
+            if(confirm("האם למחוק את כל היסטוריית האימונים מהענן לצמיתות?")) {
+                database.ref('workouts').remove();
             }
         }
-
-        // טעינה ראשונית של היסטוריה
-        loadHistory();
     </script>
 </body>
 </html>
