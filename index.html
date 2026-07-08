@@ -12,6 +12,7 @@
             --card-bg: #FFFFFF;
             --text: #263238;
             --border: #CFD8DC;
+            --danger: #D32F2F;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, sans-serif;
@@ -112,10 +113,25 @@
         }
         .history-item {
             border-bottom: 1px solid var(--border);
-            padding: 12px 0;
+            padding: 15px 0;
             font-size: 0.9rem;
+            position: relative;
         }
         .history-item:last-child { border: none; }
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .btn-delete-item {
+            background: none;
+            border: none;
+            color: var(--danger);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0 5px;
+        }
         .loading {
             text-align: center;
             color: #718096;
@@ -153,13 +169,13 @@
     <button class="btn-action" onclick="saveWorkout()">שמור אימון בענן 💾</button>
 
     <div class="history-card" style="margin-top: 20px;">
-        <h3 style="margin-top:0;">📅 היסטוריית אימונים בענן (מסונכרן)</h3>
+        <h3 style="margin-top:0;">📅 היסטוריית אימונים בענן</h3>
         <div id="history-container" class="loading">טוען נתונים מהענן...</div>
-        <button class="btn-action" style="background:#718096; font-size:0.9rem; padding:6px; margin-top:15px;" onclick="clearHistory()">מחיקת כל ההיסטוריה 🗑️</button>
+        <button class="btn-action" style="background:#718096; font-size:0.9rem; padding:6px; margin-top:15px;" onclick="clearAllHistory()">מחיקת כל ההיסטוריה לצמיתות 🗑️</button>
     </div>
 
     <script>
-        // המפתחות המלאים ששלחת מהאתר
+        // המפתחות המלאים של השרת שלך
         const firebaseConfig = {
             apiKey: "AIzaSyAVkN0ahWuBhQsJZcyp5xKoJ3m1qkPEJ2M",
             authDomain: "basketball-tracker-7380a.firebaseapp.com",
@@ -280,11 +296,18 @@
             
             let historyHTML = [];
             snapshot.forEach(function(childSnapshot) {
+                const id = childSnapshot.key; // המפתח הייחודי של האימון הספציפי בענן
                 const workout = childSnapshot.val();
                 let formattedDate = new Date(workout.date).toLocaleDateString('he-IL');
                 let nameToShow = workout.name || "שחקן כללי";
                 
-                let details = `<div class="history-item"><strong>👤 מתאמן: ${nameToShow} | 📅 יום ${formattedDate}:</strong><br>`;
+                let details = `
+                    <div class="history-item">
+                        <div class="history-header">
+                            <div><strong>👤 מתאמן: ${nameToShow} | 📅 יום ${formattedDate}:</strong></div>
+                            <button class="btn-delete-item" onclick="deleteWorkout('${id}', '${nameToShow}', '${formattedDate}')" title="מחק אימון זה">🗑️</button>
+                        </div>
+                `;
                 
                 workout.results.forEach(res => {
                     let pct = res.total > 0 ? Math.round((res.made / res.total) * 100) : 0;
@@ -304,8 +327,22 @@
             document.getElementById('history-container').innerHTML = "שגיאה בטעינת נתונים: " + error.message;
         });
 
-        function clearHistory() {
-            if(confirm("האם למחוק את כל היסטוריית האימונים מהענן לצמיתות?")) {
+        // פונקציה למחיקת אימון ספציפי שנבחר
+        function deleteWorkout(id, name, date) {
+            if(confirm(`האם אתה בטוח שברצונך למחוק את האימון של ${name} מתאריך ${date}?`)) {
+                database.ref('workouts').child(id).remove(function(error) {
+                    if(error) {
+                        alert("שגיאה במחיקת האימון: " + error.message);
+                    } else {
+                        alert("האימון נמחק מהענן בהצלחה.");
+                    }
+                });
+            }
+        }
+
+        // מחיקת כל ההיסטוריה לגיבוי
+        function clearAllHistory() {
+            if(confirm("האם למחוק את כל היסטוריית האימונים מהענן לצמיתות? פעולה זו תמחק את כל השחקנים והתאריכים!")) {
                 database.ref('workouts').remove();
             }
         }
